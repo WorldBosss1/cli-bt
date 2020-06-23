@@ -1,0 +1,46 @@
+name: Tests
+on: [push, pull_request]
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Set up Go 1.13
+        uses: actions/setup-go@v1
+        with:
+          go-version: 1.13
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Verify dependencies
+        shell: bash
+        run: |
+          go mod verify
+          go mod download
+
+      - name: Run tests
+        shell: bash
+        run: |
+          assert-nothing-changed() {
+            local diff
+            git checkout -- .
+            "$@" >/dev/null || true
+            if ! diff="$(git diff -U1 --color --exit-code)"; then
+              printf '\n\e[31mError: running `\e[31;1m%s\e[31;22m` results in modifications that you must check into version control:\e[0m\n%s\n' "$*" "$diff" >&2
+              return 1
+            fi
+          }
+
+          STATUS=0
+          go test -race ./... || STATUS=$?
+          assert-nothing-changed go fmt ./... || STATUS=$?
+          assert-nothing-changed go mod tidy || STATUS=$?
+          exit $STATUS
+
+      - name: Build
+        run: go build -v ./cmd/gh
